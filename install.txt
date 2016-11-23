@@ -1,0 +1,9 @@
+1. Установить докер в соотвествии с инструкцией на сайте для конкретной версии ос
+2. Сбилдить image
+docker build -t uni-tomcat config_files/uni-tomcat
+3. Установить библиотеки, необходимые для сборки питонных библиотек (+ gcc?)
+apt-get install python3-pip python3-dev freetds-dev
+4. Установить зависимости
+pip3 install docker-py tornado jenkinsapi pymssql python-magic
+
+python ./main.py

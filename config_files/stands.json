@@ -1,0 +1,8 @@
+[
+  {
+    "name": "test",
+    "description": "УрТЕСТ",
+    "postgres": true,
+    "comment": "Не используется и не существует"
+  }
+]

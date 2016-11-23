@@ -1,0 +1,48 @@
+[all]
+
+# Общие настройки
+uni_docker_url = localhost
+uni_docker_port = 8888
+log_level = DEBUG
+
+# Директория куда сохранять стенды и логи
+work_dir = /opt/uni-docker
+
+# Управление ресурсами
+max_active_stands = 3
+start_port = 8400
+ports = 100
+
+# Базы данных, таймауты в секундах
+backup_timeout = 3600
+restore_timeout = 15800
+postgres_ignore_restore_errors = true
+
+# Значения по умолчанию для создания НОВЫХ стендов. Изменение не приведет к изменению работы уже созданных стендов
+docker_url = unix://var/run/docker.sock
+image = uni-tomcat
+catalina_opt = -Dapp.install.path=/usr/local/uni -Xmx1024m -Djava.awt.headless=true -Dfile.encoding=UTF-8 -Xdebug -Xnoagent -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8180
+#Создание новых баз данных с этим префиксом
+db_prefix = dock_
+# отсюда копируется app.config, можно добавить другие uni конфиги
+config_dir = /opt/uni-docker/config
+# шаблоны конфигов баз данных
+postgres_hibernate_config = /opt/uni-docker/config_files/postgres_hibernate.properties
+mssql_hibernate_config = /opt/uni-docker/config_files/mssql_hibernate.properties
+
+# Параметры подключения к базам данных используемые по умолчанию. Изменение не приведет к изменению работы уже созданных стендов
+postgres_addr = 127.0.0.1
+postgres_user = user
+postgres_pass = pass
+postgres_backup_dir = /opt/tandem/uni-docker/backups
+
+mssql_addr = 127.0.0.1
+mssql_user = user
+mssql_pass = pass
+mssql_backup_dir = D:\uni-docker\backups
+mssql_db_dir = D:\uni-docker\db
+
+# Параметры подключения к сборщику используемые по умолчанию. Изменение не приведет к изменению работы уже созданных стендов
+jenkins_url = http://jenkins/jenkins/
+jenkins_user = uni-docker
+jenkins_pass = uni-docker

@@ -1,0 +1,6 @@
+test_dir/*
+test_container/*
+work_dir/*
+.idea/*
+.*.pyc
+daemon/__pycache__/*
