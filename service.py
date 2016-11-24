@@ -115,11 +115,9 @@ def main():
 
         for stand in stand_list:
             if stand['postgres']:
-                db_ip = conf.postgres_default
                 backup_file = '{}.backup'.format(stand['name'])
                 db_type = 'postgres'
             else:
-                db_ip = conf.mssql_default
                 backup_file = '{}.bak'.format(stand['name'])
                 db_type = 'mssql'
 
@@ -148,13 +146,13 @@ def main():
 
             if branch_name not in sm.stands:
                 t = sm.add_new(name=branch_name,
-                               db_addr=db_ip,
                                db_type=db_type,
                                jenkins_project=jenkins_branch,
                                jenkins_version=jenkins_version,
                                description=description_branch,
                                do_build=True,
                                validate_entity_code=validate_entity_code,
+                               reduce=True,
                                uni_schema=uni_schema,
                                backup_file=backup_file)
                 t.run(no_exceptions=True)

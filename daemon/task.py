@@ -129,13 +129,19 @@ class Task:
             self.stand.stop(wait=True)
         self.set_status(None)
 
+    def _reduce(self):
+        self.stand.stop(wait=True)
+        self.set_status(REDUCE)
+        self.stand.db.reduce()
+        self.set_status(None)
+
     def _update(self):
         try:
             do_build = self.task_params['do_build']
         except KeyError:
             raise RuntimeError('Missing parameter of task')
 
-        self.stand.stop()
+        self.stand.stop(wait=True)
         self.set_status(BUILD_AND_UPLOAD)
         webapp_dir = os.path.join(self.stand.stand_dir, 'webapp')
         os.rename(webapp_dir, '{0}_backup_{1}'.format(webapp_dir, datetime.datetime.now().strftime('%d.%m.%Y %H:%M')))
@@ -192,6 +198,10 @@ class Task:
 
             if self.do == DO_RESTORE:
                 self._restore_db()
+                return
+
+            if self.do == DO_REDUCE:
+                self._reduce()
                 return
 
         except Exception as e:

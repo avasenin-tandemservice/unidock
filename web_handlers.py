@@ -158,7 +158,13 @@ class StandHandler(CommonHandler):
                 self.finish('Task added')
                 return
 
-            self.finish('Incorrect action, use: add')
+            if action == 'reduce':
+                task = self._get_stand_manager().reduce(name)
+                self._get_long_task_tpe().submit(task.run)
+                self.finish('Task added')
+                return
+
+            self.finish('Incorrect action, use: add, reduce')
             return
 
         except DaemonException as e:

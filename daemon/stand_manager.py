@@ -465,6 +465,11 @@ class StandManager:
         return task.Task(do=task.DO_RESTORE, stand=s,
                          backup_path=self._backup_path(stand_name=name, db_type=s.db_type, file=file))
 
+    def reduce(self, name) -> task.Task:
+        log.debug('Add new task REDUCE for stand %s', name)
+        s = self._stand_with_validate(name)
+        return task.Task(do=task.DO_REDUCE, stand=s)
+
     def start(self, name):
         """
         Запустить стенд
