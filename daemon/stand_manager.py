@@ -26,7 +26,6 @@ class StandManager:
         self.start_port = config.start_port
         self.ports = config.ports
 
-        self.docker_url = config.docker_url
         self.image = config.image
         self.catalina_opt = config.catalina_opt
         self.db_prefix = config.db_prefix
@@ -36,6 +35,14 @@ class StandManager:
         self.postgres_user = config.postgres_user
         self.postgres_pass = config.postgres_pass
         self.postgres_backup_dir = config.postgres_backup_dir
+
+        self.pgdocker_start_port = config.pgdocker_start_port
+        self.pgdocker_ports = config.pgdocker_ports
+        self.pgdocker_addr = config.pgdocker_addr
+        self.pgdocker_ssh_user = config.pgdocker_ssh_user
+        self.pgdocker_ssh_pass = config.pgdocker_ssh_pass
+        self.pgdocker_backup_dir = config.pgdocker_backup_dir
+
         self.mssql_addr = config.mssql_addr
         self.mssql_hibernate_conf = config.mssql_hibernate_config
         self.mssql_user = config.mssql_user
@@ -47,7 +54,7 @@ class StandManager:
         self.jenkins_pass = config.jenkins_pass
 
         self.stands_dir = os.path.join(self.work_dir, 'stands')
-        self.cli = Client(base_url=self.docker_url)
+        self.cli = Client(base_url='unix://var/run/docker.sock')
 
         # валидация рабочей директории
         if not os.path.isdir(self.work_dir):
@@ -143,6 +150,19 @@ class StandManager:
 
         raise DaemonException('No free port')
 
+    def _get_pgdocker_port(self):
+        used_ports = []
+        for stand in self.stands.values():
+            if stand.db_type == 'pgdocker':
+                used_ports.append(stand.db_port)
+
+        for port in range(self.pgdocker_start_port,
+                          self.pgdocker_start_port + self.pgdocker_ports):
+            if port not in used_ports:
+                return port
+
+        raise DaemonException('No free port')
+
     def free_resources(self) -> bool:
         """
         Можно ли запустить еще один стенд
@@ -227,6 +247,7 @@ class StandManager:
                 db_name=None,
                 db_user=None,
                 db_pass=None,
+                db_container=None,
                 description=None,
                 jenkins_version=None,
                 validate_entity_code=True,
@@ -234,11 +255,14 @@ class StandManager:
 
                 existed_db=False,
                 backup_file=None,
+                filesystem_backup=False,
                 reduce=False,
                 uni_schema=None,
                 ) -> task.Task:
         """
         Задача на добавление нового стенда
+        :param db_container: Контейнер базы данных. только для db_type=pgdocker
+        :param filesystem_backup: использовать для восстановления бэкап файловой системы, только для db_type=pgdocker, бэкап должен быть на сервере
         :param uni_schema: {'user' : 'user', 'pass': 'pass'} если надо использовать схему uni
         :param validate_entity_code:Если false то добавит строку db.validateEntityCode=false в hibernate.config
         :param reduce: Почистить блобы и журнал, сжать базу
@@ -271,6 +295,12 @@ class StandManager:
         if reduce and not backup_file and not existed_db:
             raise DaemonException('Cannot reduce clear database')
 
+        if db_type == 'pgdocker' and existed_db and not db_port:
+            raise DaemonException('You must specify db_port fom pgdocker existed db')
+
+        if (filesystem_backup or db_container) and db_type != 'pgdocker':
+            raise DaemonException('You can use filesystem backup or db_container only for pgdocker db_type')
+
         ports = self._get_ports()
 
         stand_dir = os.path.join(self.stands_dir, name)
@@ -287,6 +317,9 @@ class StandManager:
                 db_pass = self.postgres_pass
             if not db_port:
                 db_port = 5432
+            db_container = None
+            ssh_user = None
+            ssh_pass = None
             pattern = self.postgres_hibernate_conf
 
         elif db_type == 'mssql':
@@ -298,7 +331,24 @@ class StandManager:
                 db_pass = self.mssql_pass
             if not db_port:
                 db_port = 1433
+            db_container = None
+            ssh_user = None
+            ssh_pass = None
             pattern = self.mssql_hibernate_conf
+
+        elif db_type == 'pgdocker':
+            if not db_addr:
+                db_addr = self.pgdocker_addr
+            if not db_port:
+                db_port = self._get_pgdocker_port()
+            if not db_container:
+                db_container = db_name
+            db_name = 'uni'
+            db_user = 'postgres'
+            db_pass = 'postgres'
+            ssh_user = self.pgdocker_ssh_user
+            ssh_pass = self.pgdocker_ssh_pass
+            pattern = self.postgres_hibernate_conf
 
         else:
             raise DaemonException('Unsupported database type')
@@ -307,12 +357,15 @@ class StandManager:
         db_addr = socket.gethostbyname(db_addr)
 
         if backup_file:
-            backup_path = self._backup_path(db_type=db_type, file=backup_file)
+            # Если это не бэкап файловой системы, значит он должен лежать в стандартной папке бэкапов постгреса
+            if db_type == 'pgdocker' and not filesystem_backup:
+                backup_path = self._backup_path(db_type='postgres', file=backup_file)
+            else:
+                backup_path = self._backup_path(db_type=db_type, file=backup_file)
         else:
             backup_path = None
 
-        stand_details = {'docker_url': self.docker_url,
-                         'image': self.image,
+        stand_details = {'image': self.image,
                          'catalina_opt': self.catalina_opt,
 
                          'container_id': None,
@@ -327,6 +380,10 @@ class StandManager:
                          'db_name': db_name,
                          'db_user': db_user,
                          'db_pass': db_pass,
+                         'db_container': db_container,
+                         'ssh_user': ssh_user,
+                         'ssh_pass': ssh_pass,
+
                          'last_backup': None,
                          'validate_entity_code': validate_entity_code,
                          'uni_schema': uni_schema,
@@ -350,6 +407,7 @@ class StandManager:
                          pattern=pattern,
                          existed_db=existed_db,
                          backup_path=backup_path,
+                         filesystem_backup=filesystem_backup,
                          reduce=reduce,
                          do_build=do_build)
 
@@ -413,6 +471,11 @@ class StandManager:
             if not file:
                 file = '{}_default.bak'.format(stand_name)
             return '{}\\{}'.format(self.mssql_backup_dir, file)
+
+        if db_type == 'pgdocker':
+            if not file:
+                file = '{}_default.backup'.format(stand_name)
+            return os.path.join(self.pgdocker_backup_dir, file)
 
         raise RuntimeError('Unsupported database type')
 
@@ -577,8 +640,16 @@ class StandManager:
 
         if stand.db_type == 'postgres':
             backup_file = '{}_default.backup'.format(name)
+            pgdocker_backup = False
+            db_port = stand.db_port
         elif stand.db_type == 'mssql':
             backup_file = '{}_default.bak'.format(name)
+            pgdocker_backup = False
+            db_port = stand.db_port
+        elif stand.db_type == 'pgdocker':
+            backup_file = '{}_default.backup'.format(name)
+            pgdocker_backup = True
+            db_port = None
         else:
             raise RuntimeError('Unsupported database type')
 
@@ -586,7 +657,7 @@ class StandManager:
                                 db_type=stand.db_type,
                                 jenkins_project=new_jenkins_project,
                                 db_addr=stand.db_addr,
-                                db_port=stand.db_port,
+                                db_port=db_port,
                                 db_name=None,
                                 db_user=stand.db_user,
                                 db_pass=stand.db_pass,
@@ -597,7 +668,8 @@ class StandManager:
                                 reduce=False,
                                 validate_entity_code=stand.validate_entity_code,
                                 uni_schema=stand.uni_schema,
-                                backup_file=backup_file)
+                                backup_file=backup_file,
+                                filesystem_backup=pgdocker_backup)
 
         if do_backup:
             try:

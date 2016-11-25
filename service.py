@@ -77,6 +77,12 @@ def main():
                 stand_info['last_backup'] = None
                 log.info('Добавлено last_backup=None в %s', stand_info_path)
 
+            if 'db_container' not in stand_info:
+                stand_info['db_container'] = None
+                stand_info['ssh_user'] = None
+                stand_info['ssh_pass'] = None
+                log.info('Добавлены db_container ssh_user ssh_pass  в %s', stand_info_path)
+
             with open(stand_info_path, 'wt') as f:
                 json.dump(stand_info, f)
 

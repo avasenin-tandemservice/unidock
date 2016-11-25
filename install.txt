@@ -2,8 +2,17 @@
 2. Сбилдить image
 docker build -t uni-tomcat config_files/uni-tomcat
 3. Установить библиотеки, необходимые для сборки питонных библиотек (+ gcc?)
-apt-get install python3-pip python3-dev freetds-dev
+apt-get install postgresql-client python3-pip python3-dev freetds-dev
 4. Установить зависимости
 pip3 install docker-py tornado jenkinsapi pymssql python-magic
 
-python ./main.py
+./main.py
+
+Настройка отдельного сервера postgres на базе docker (только ели нужен отдельный сервер)
+
+1. Установить докер в соотвествии с инструкцией на сайте для конкретной версии ос
+2. Сконфигурировать на прием команд извне https://docs.docker.com/engine/admin/
+3. Добавить пользователя который будет владельцем бэкапов. Задать ему пароль.
+sudo adduser pgdocker
+4. Установить ssh сервер для подключений с целью управления томами
+sudo apt-get install ssh-server

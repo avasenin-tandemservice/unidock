@@ -9,7 +9,7 @@ from docker import Client
 from daemon import jenkins, stand, stand_manager
 from daemon.config import DaemonConfig
 from daemon.exceptions import DaemonException
-from daemon.stand_db import StandPostgresDb, StandMssqlDb
+from daemon.stand_db import StandPostgresDb, StandMssqlDb, StandDockerPostgres
 
 log = logging.getLogger(__name__)
 
@@ -25,9 +25,8 @@ class DaemonTests(unittest.TestCase):
         self.DB_IP = '192.168.201.187'
 
         config.work_dir = self.test_dir
-        config.max_active_stands = 1
-        config.ports = 5
         config.start_port = 8500
+        config.pgdocker_ports = 9500
         config.postgres_backup_dir = self.test_dir
         config.postgres_addr = self.DB_IP
         config.db_prefix = 't{}_'.format(test_id[-6:])
@@ -53,7 +52,6 @@ class DaemonTests(unittest.TestCase):
                                       'name': self.NAME,
                                       'description': self.DESCRIPTION,
                                       'ports': self.PORTS,
-                                      'docker_url': config.docker_url,
                                       'stand_dir': self.EXISTED_STAND_DIR,
 
                                       'db_type': 'postgres',
@@ -78,9 +76,11 @@ class DaemonTests(unittest.TestCase):
                                       'active_task': None,
                                       }
         self.SECOND_CONTAINER = 'unittest2'
+        self.PGDOCKER_NAME = 'pg_unittest'
+        self.PGDPCKER_PORT = 9010
 
-        cli = Client(base_url=self.config.docker_url)
-        for c in (self.NAME, self.SECOND_CONTAINER):
+        cli = Client(base_url='unix://var/run/docker.sock')
+        for c in (self.NAME, self.SECOND_CONTAINER, self.PGDOCKER_NAME):
             try:
                 cli.remove_container(c, v=True, force=True)
             except Exception:
@@ -139,6 +139,7 @@ class DaemonTests(unittest.TestCase):
         """
         Отказ в запуске стенда при исчерпании ресурсов
         """
+        self.config.max_active_stands = 1
         sm = stand_manager.StandManager(self.config)
 
         self.assertTrue(sm.free_resources())
@@ -232,13 +233,14 @@ class DaemonTests(unittest.TestCase):
         """
         Выдача портов из диапазона. Отказ в выдаче при исчерпании диапазона.
         """
+        self.config.ports = 5
         sm = stand_manager.StandManager(self.config)
-        sm.add_new('1', '1', '1', '1')
-        t = sm.add_new('2', '2', '2', '2')
+        sm.add_new('1', 'postgres', '1', '1')
+        t = sm.add_new('2', 'postgres', '2', '2')
         self.assertEqual([self.config.start_port + 2, self.config.start_port + 3],
                          t.stand.ports)
         with self.assertRaises(DaemonException):
-            sm.add_new('3', '3', '3', '3')
+            sm.add_new('3', 'postgres', '3', '3')
 
     def test_8_stands_from_json(self):
         """
@@ -268,6 +270,20 @@ class DaemonTests(unittest.TestCase):
         db.backup(backup_path)
         db.restore(backup_path)
 
+    def test_10_db_pgdocker(self):
+        """
+        Cоздание, бэкап и восстановление баз данных Postgres на базе докер
+        """
+        backup_path = os.path.join(self.test_dir, 'test.backup')
+        db = StandDockerPostgres(addr=self.DB_IP,
+                                 port=self.PGDPCKER_PORT,
+                                 container_name=self.PGDOCKER_NAME,
+                                 ssh_user=None,
+                                 ssh_password=None)
+        db.create()
+        db.backup(backup_path)
+        db.restore(backup_path)
+
     def test_11_db_mssql(self):
         """
         Cоздание, бэкап и восстановление баз данных MSSQL
@@ -281,10 +297,11 @@ class DaemonTests(unittest.TestCase):
         db.backup(backup_path)
         db.restore(backup_path)
 
-    def _stand_and_new_db(self, db_type):
+    def _stand_and_new_db(self, db_type, db_container=None):
         sm = stand_manager.StandManager(self.config)
         t = sm.add_new(name=self.NAME,
                        db_type=db_type,
+                       db_container=db_container,
                        description=self.DESCRIPTION,
                        jenkins_project=self.PROJECT)
         t.run(no_exceptions=False)
@@ -324,6 +341,14 @@ class DaemonTests(unittest.TestCase):
         Бэкап и восстановление баз данных стенда через менеджера
         """
         self._stand_and_new_db('postgres')
+
+    def test_12_stand_and_new_db_pgdocker(self):
+        """
+        Создание бд во время создания стенда. Новая база будет заполнена.
+        Удаление блобов из новой базы
+        Бэкап и восстановление баз данных стенда через менеджера
+        """
+        self._stand_and_new_db('pgdocker', db_container=self.PGDOCKER_NAME)
 
     def test_13_clone(self):
         sm = stand_manager.StandManager(self.config)

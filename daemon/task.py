@@ -73,6 +73,7 @@ class Task:
             backup_path = self.task_params['backup_path']
             do_build = self.task_params['do_build']
             reduce = self.task_params['reduce']
+            filesystem_backup = self.task_params['filesystem_backup']
         except KeyError:
             raise RuntimeError('Missing parameter of task')
 
@@ -82,7 +83,7 @@ class Task:
 
         if backup_path:
             self.set_status(RESTORE_DB)
-            self.stand.db.restore(backup_path=backup_path)
+            self.stand.db.restore(backup_path=backup_path, filesystem_backup=filesystem_backup)
 
             if self.stand.db_type == 'mssql' and self.stand.uni_schema:
                 self.stand.db.map_user_schema(self.stand.uni_schema['user'], 'uni')

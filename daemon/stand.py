@@ -7,7 +7,7 @@ import urllib3
 from docker import Client, errors
 
 from daemon.exceptions import DaemonException, InvalidStandInfo
-from daemon.stand_db import StandMssqlDb, StandPostgresDb
+from daemon.stand_db import StandMssqlDb, StandPostgresDb, StandDockerPostgres
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +16,6 @@ class Stand:
     def __init__(self, **kwargs):
         log.debug('Initialize new stand container object')
         try:
-            self.docker_url = kwargs['docker_url']
             self.image = kwargs['image']
             self.catalina_opt = kwargs['catalina_opt']
 
@@ -32,6 +31,11 @@ class Stand:
             self.db_name = kwargs['db_name']
             self.db_user = kwargs['db_user']
             self.db_pass = kwargs['db_pass']
+
+            self.db_container = kwargs['db_container']
+            self.ssh_user = kwargs['ssh_user']
+            self.ssh_pass = kwargs['ssh_pass']
+
             self.last_backup = kwargs['last_backup']
 
             # Набор костылей
@@ -55,13 +59,16 @@ class Stand:
         except KeyError:
             raise InvalidStandInfo()
 
-        self.cli = Client(base_url=self.docker_url)
+        self.cli = Client(base_url='unix://var/run/docker.sock')
         self.stand_info = os.path.join(self.stand_dir, 'stand_info.json')
 
         if self.db_type == 'postgres':
             self.db = StandPostgresDb(self.db_addr, self.db_name, self.db_user, self.db_pass, self.db_port)
         elif self.db_type == 'mssql':
             self.db = StandMssqlDb(self.db_addr, self.db_name, self.db_user, self.db_pass, self.db_port)
+        elif self.db_type == 'pgdocker':
+            self.db = StandDockerPostgres(self.db_addr, container_name=self.db_container, ssh_user=self.ssh_user,
+                                          ssh_password=self.ssh_pass, port=self.db_port)
         else:
             raise RuntimeError('Unsupported database type')
 
@@ -89,6 +96,7 @@ class Stand:
         log.debug('Create hibernate file for %s', self.name)
         with open(pattern) as f:
             conf = f.read()
+
         conf = conf.format(addr=self.db_addr, name=self.db_name, port=self.db_port,
                            user=self.db_user, password=self.db_pass)
 

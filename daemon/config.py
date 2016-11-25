@@ -25,10 +25,10 @@ class DaemonConfig(object):
 
         # Значения по умолчанию для создания НОВЫХ стендов
         self.config_dir = 'undefined'
-        self.docker_url = 'undefined'
         self.image = 'undefined'
         self.catalina_opt = 'undefined'
         self.db_prefix = 'undefined'
+
         # шаблон конфига
         self.postgres_addr = 'undefined'
         self.postgres_hibernate_config = 'undefined'
@@ -36,6 +36,14 @@ class DaemonConfig(object):
         self.postgres_pass = 'undefined'
         self.postgres_backup_dir = 'undefined'
         self.postgres_ignore_restore_errors = 'undefined'
+
+        self.pgdocker_start_port = -1
+        self.pgdocker_ports = -1
+        self.pgdocker_use_ssh = 'undefined'
+        self.pgdocker_addr = 'undefined'
+        self.pgdocker_ssh_user = 'undefined'
+        self.pgdocker_ssh_pass = 'undefined'
+        self.pgdocker_backup_dir = 'undefined'
 
         self.mssql_addr = 'undefined'
         self.mssql_hibernate_config = 'undefined'
@@ -90,7 +98,7 @@ class DaemonConfig(object):
             if obj_name == 'defined':
                 continue
             try:
-                if obj_name == 'postgres_ignore_restore_errors':
+                if obj_name in ('postgres_ignore_restore_errors', 'pgdocker_use_ssh'):
                     val = config.getboolean(section='all', option=obj_name)
                 else:
                     val = config.get(section='all', option=obj_name)

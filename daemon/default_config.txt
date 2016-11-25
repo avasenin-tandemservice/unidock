@@ -19,7 +19,6 @@ restore_timeout = 15800
 postgres_ignore_restore_errors = true
 
 # Значения по умолчанию для создания НОВЫХ стендов. Изменение не приведет к изменению работы уже созданных стендов
-docker_url = unix://var/run/docker.sock
 image = uni-tomcat
 catalina_opt = -Dapp.install.path=/usr/local/uni -Xmx1024m -Djava.awt.headless=true -Dfile.encoding=UTF-8 -Xdebug -Xnoagent -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8180
 #Создание новых баз данных с этим префиксом
@@ -35,6 +34,15 @@ postgres_addr = 127.0.0.1
 postgres_user = user
 postgres_pass = pass
 postgres_backup_dir = /opt/tandem/uni-docker/backups
+
+pgdocker_start_port = 9400
+pgdocker_ports = 600
+# Использовать ssh подключение (для отдельного сервера postgres на базе docker)
+pgdocker_use_ssh = false
+pgdocker_addr = 127.0.0.1
+pgdocker_ssh_user = user
+pgdocker_ssh_pass = pass
+pgdocker_backup_dir = /opt/tandem/uni-docker/backups
 
 mssql_addr = 127.0.0.1
 mssql_user = user
