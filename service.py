@@ -83,6 +83,22 @@ def main():
                 stand_info['ssh_pass'] = None
                 log.info('Добавлены db_container ssh_user ssh_pass  в %s', stand_info_path)
 
+            if 'web_interface_error' not in stand_info:
+                stand_info['web_interface_error'] = None
+                log.info('Добавлен web_interface_error в %s', stand_info_path)
+
+            if 'backup_dir' not in stand_info:
+                if stand_info['db_type'] == 'postgres':
+                    backup_dir = conf.postgres_backup_dir
+                elif stand_info['db_type'] == 'mssql':
+                    backup_dir = conf.mssql_backup_dir
+                elif stand_info['db_type'] == 'pgdocker':
+                    backup_dir = conf.pgdocker_backup_dir
+                else:
+                    raise RuntimeError
+                stand_info['backup_dir'] = backup_dir
+                log.info('Добавлен backup_dir=%s в %s', backup_dir, stand_info_path)
+
             with open(stand_info_path, 'wt') as f:
                 json.dump(stand_info, f)
 
@@ -91,7 +107,6 @@ def main():
     if args.containers:
         log.info('Recreate containers')
         for stand in sm.stands.values():
-            stand.docker_url = conf.docker_url
             stand.image = conf.image
             stand.catalina_opt = conf.catalina_opt
             stand.write_json()
@@ -163,9 +178,11 @@ def main():
                                backup_file=backup_file)
                 t.run(no_exceptions=True)
 
-                if t.status == task.ERROR and trunk_name not in sm.stands:
+                if (t.status == task.ERROR or t.stand.web_interface_error) and trunk_name not in sm.stands:
                     log.error('Something wrong while create branch stand. Trunk stand creation canceled')
                     continue
+
+                t.stand.stop()
 
                 if jenkins_version and trunk_name not in sm.stands:
                     log.warning('Creating trunk is skipped cause version of trunk is undefined')
@@ -181,17 +198,13 @@ def main():
                                   do_backup=True):
                     t.run(no_exceptions=True)
 
+                    t.stand.stop()
+
     if args.backup_with_prefix:
         prefix = args.backup_with_prefix
         log.info('Backup all stands with prefix %s', prefix)
         for stand in sm.stands.values():
-            if stand.db_type == 'postgres':
-                file = '{}_{}.backup'.format(stand.name, prefix)
-            elif stand.db_type == 'mssql':
-                file = '{}_{}.bak'.format(stand.name, prefix)
-            else:
-                raise RuntimeError('Unsupported database type')
-            sm.backup_db(stand.name, file).run()
+            sm.backup_db(stand.name, prefix=prefix).run()
 
     if args.daily_backup:
         log.info('Daily backup')
@@ -202,6 +215,7 @@ def main():
         for stand in sm.stands.values():
             if not stand.jenkins_version:
                 sm.update(stand.name).run()
+                sm.stop(stand.name)
 
 
 if __name__ == '__main__':

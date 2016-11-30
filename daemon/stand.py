@@ -2,9 +2,11 @@ import json
 import logging
 import os
 import shutil
+import time
 
-import urllib3
 from docker import Client, errors
+from tornado import gen
+from tornado.httpclient import HTTPClient, AsyncHTTPClient, HTTPError
 
 from daemon.exceptions import DaemonException, InvalidStandInfo
 from daemon.stand_db import StandMssqlDb, StandPostgresDb, StandDockerPostgres
@@ -37,8 +39,7 @@ class Stand:
             self.ssh_pass = kwargs['ssh_pass']
 
             self.last_backup = kwargs['last_backup']
-
-            # Набор костылей
+            self.backup_dir = kwargs['backup_dir']
 
             # Для клиентов ведущих активную разработку в своем слое отключаем валидации
             self.validate_entity_code = kwargs['validate_entity_code']
@@ -56,6 +57,7 @@ class Stand:
             self.version = kwargs['version']
 
             self.active_task = kwargs['active_task']
+            self.web_interface_error = kwargs['web_interface_error']
         except KeyError:
             raise InvalidStandInfo()
 
@@ -135,30 +137,77 @@ class Stand:
         self.write_json()
         return self.container_id
 
-    def start(self):
+    def start(self, wait=True):
         log.info('Start container %s', self.name)
 
         if not self.container_id:
             raise DaemonException('Container is not exists')
+        if self.db_type == 'pgdocker':
+            self.db.start()
         try:
             self.cli.start(self.container_id)
         except (errors.DockerException, errors.APIError) as e:
             raise DaemonException(str(e))
+        self._check_uni_iface(blocking=wait)
 
-    def check_http(self, timeout=600):
-        log.info('Check connect to %s container', self.name)
-        conn = urllib3.connection_from_url('http://localhost:{0}/'.format(self.ports[0]))
-        # urllib3.exceptions.MaxRetryError - исключение во время старта
-        # urllib3.exceptions.ReadTimeoutError - таймаут
-        conn.request('GET', '/', timeout=timeout)
-        log.debug('Container %s is available', self.name)
+    def is_running(self):
+        if not self.container_id:
+            return False
+        else:
+            try:
+                return self.cli.inspect_container(self.container_id)['State']['Running']
+            except (errors.DockerException, errors.APIError):
+                return False
+
+    @gen.coroutine
+    def _check_uni_iface(self, blocking=True, timeout=900):
+        log.debug('Check connect to %s container', self.name)
+        # В течение первых 50 секунд, либо пока контейнер запущен пытаемся установить tcp-соединение.
+        # Томкат начинает слушать порт не сразу
+        # После установки соединения ждем ответа по протоколу http до истечения таймаута
+
+        try_count = 0
+        while 1:
+            if self.is_running():
+                try:
+                    if blocking:
+                        cl = HTTPClient()
+                        cl.fetch('http://localhost:{0}/'.format(self.ports[0]), request_timeout=timeout)
+                    else:
+                        cl = AsyncHTTPClient()
+                        yield cl.fetch('http://localhost:{0}/'.format(self.ports[0]), request_timeout=timeout)
+
+                    self.web_interface_error = None
+                    break
+                except (ConnectionError, HTTPError) as e:
+                    if try_count < 10:
+                        if blocking:
+                            time.sleep(5)
+                        else:
+                            yield gen.sleep(5)
+                        try_count += 1
+                    else:
+                        self.web_interface_error = str(e)
+                        break
+                finally:
+                    cl.close()
+            else:
+                self.web_interface_error = 'Container has unexpectedly stopped'
+                break
+
+        if self.web_interface_error:
+            log.info('Container %s is not available. Web interface error: %s', self.name, self.web_interface_error)
+        else:
+            log.info('Container %s is available', self.name)
+
+        self.write_json()
 
     def stop(self, wait=True):
         log.info('Stop container %s', self.name)
         if not self.container_id:
             raise DaemonException('Container is not exists')
         try:
-            self.cli.stop(self.container_id)
+            self.cli.stop(self.container_id, timeout=60)
         except (errors.DockerException, errors.APIError) as e:
             raise DaemonException(str(e))
         if wait:

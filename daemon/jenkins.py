@@ -51,7 +51,7 @@ class Jenkins:
             try:
                 if not job.get_build(build_number).is_running():
                     break
-            except KeyError:
+            except (KeyError, jenkinsapi.custom_exceptions.NotFound):
                 pass
             log.debug('wait build')
             elapsed_time += 15

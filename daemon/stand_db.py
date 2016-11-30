@@ -33,7 +33,7 @@ class StandDb(object):
     def create(self):
         raise NotImplementedError
 
-    def restore(self, backup_path, filesystem_backup=False):
+    def restore(self, backup_path):
         raise NotImplementedError
 
     def backup(self, backup_path):
@@ -109,9 +109,7 @@ class StandMssqlDb(StandDb):
                                                                      backup_path)
         self._run_sql(sql, timeout=self.backup_timeout)
 
-    def restore(self, backup_path, filesystem_backup=False):
-        if filesystem_backup:
-            raise DaemonException('Cannot to filesystem backup for mssql')
+    def restore(self, backup_path):
         log.info('Restore database %s on server %s', self.name, self.addr)
         # Сначала узнаем какие файлы содержит бэкапю Возвращает таблицу
         sql = 'RESTORE FILELISTONLY FROM DISK = \'{}\''.format(backup_path)
@@ -291,9 +289,10 @@ class StandPostgresDb(StandDb):
             log.warning(' '.join(args))
             # Чтобы ошибки восстановления не засирали лог вывводим первые 1000 символов
             error_text = out.decode() + err.decode()
-            log.warning(
-                    ('{} \n and another {} symbols'.format(error_text[:1000], len(error_text) - 1000)) if len(
-                        error_text) > 1000 else error_text)
+            if len(error_text) < 1000:
+                log.warning(error_text)
+            else:
+                log.warning('{} \n and another {} symbols'.format(error_text[-1000:], len(error_text) - 1000))
             if not ignore_error:
                 raise DaemonException('Console command for postgresql failed. See log for details')
 
@@ -304,6 +303,12 @@ class StandPostgresDb(StandDb):
                 ]
         self._run_console_command(args, timeout=self.quick_operation_timeout)
 
+    def drop(self):
+        log.info('Drop database %s on server %s', self.name, self.addr)
+        self._run_console_command(['psql',
+                                   '--command', 'DROP DATABASE {0}'.format(self.name),
+                                   ], timeout=self.quick_operation_timeout)
+
     def backup(self, backup_path):
         log.info('Backup database %s on server %s', self.name, self.addr)
         args = ['pg_dump',
@@ -313,11 +318,13 @@ class StandPostgresDb(StandDb):
                 ]
         self._run_console_command(args, self.backup_timeout)
 
-    def restore(self, backup_path, filesystem_backup=False):
-        if filesystem_backup:
-            raise DaemonException('Cannot to filesystem backup for postgres without container')
+    def restore(self, backup_path):
         log.info('Restore database %s on server %s', self.name, self.addr)
         if not os.path.isdir(backup_path) and magic.from_file(backup_path, mime=False).find('ASCII text') != -1:
+            # Чтобы наследники юзали методы родителя
+            StandPostgresDb.drop(self)
+            StandPostgresDb.create(self)
+            log.info('Restore plain text backup to database %s on server %s', self.name, self.addr)
             with open(backup_path) as f:
                 args = ['psql', '--quiet',
                         '--dbname', self.name,
@@ -330,8 +337,11 @@ class StandPostgresDb(StandDb):
         elif os.path.isdir(backup_path) \
                 or magic.from_file(backup_path, mime=False).find('PostgreSQL') != -1 \
                 or magic.from_file(backup_path, mime=False).find('POSIX tar archive') != -1:
+            log.info('Restore pg_dump backup to database %s on server %s', self.name, self.addr)
+            StandPostgresDb.drop(self)
+            StandPostgresDb.create(self)
             args = ['pg_restore',
-                    '--no-owner', '--no-privileges', '--clean',
+                    '--no-owner', '--no-privileges',
                     '--dbname', self.name,
                     backup_path,
                     ]
@@ -438,16 +448,16 @@ class StandDockerPostgres(StandPostgresDb):
         self.docker.create_container(image='postgres:9.4',
                                      name=self.container_name,
                                      detach=True,
-                                     # volumes=['/var/lib/postgresql/data'],
                                      ports=[5432],
                                      host_config=self.docker.create_host_config(
-                                             # binds=['{0}:/var/lib/postgresql/data'.format(self.volume_path)],
                                              port_bindings={5432: self.port}),
                                      environment={'POSTGRES_PASSWORD': 'postgres',
                                                   'TZ': 'Asia/Yekaterinburg'},
                                      )
 
-    def _wait_container_start(self):
+    def start(self):
+        self.docker.start(self.container_name)
+        # Ждем запуска постргреса
         for i in range(0, 60):
             try:
                 time.sleep(1)
@@ -461,9 +471,7 @@ class StandDockerPostgres(StandPostgresDb):
     def create(self):
         log.info('Create container with postgres_db. Name %s, port %s', self.container_name, self.port)
         self._create_container()
-        self.docker.start(self.container_name)
-        # Ждем запуска постргреса
-        self._wait_container_start()
+        self.start()
         # Теперь создадим дефолтную базу в новом контейнере
         # Сразу после поднятия psql: FATAL:  the database system is starting up
         for c in range(0, 10):
@@ -479,33 +487,29 @@ class StandDockerPostgres(StandPostgresDb):
         log.info('Backup database container %s on server %s', self.container_name, self.addr)
         # https://www.postgresql.org/docs/9.4/static/backup-file.html
         # The database server must be shut down in order to get a usable backup
-        self.docker.stop(self.container_name)
+        self.docker.stop(self.container_name, timeout=60)
         self.docker.wait(self.container_name)
-        # Я использую subprocess, чтобы бэкапы не гонялись по сети
-        command = ['docker', 'cp', '{}:/var/lib/postgresql/data'.format(self.container_name), backup_path]
-        log.debug('Run command %s', ' '.join(command))
+        # Я использую subprocess, чтобы бэкапы не гонялись по сети.
+        command = 'docker cp {}:/var/lib/postgresql/data/. - > {}'.format(self.container_name, backup_path)
+        log.debug('Run command %s', command)
         try:
-            subprocess.check_call(command)
+            subprocess.check_call(command, shell=True, timeout=self.backup_timeout)
         finally:
-            self.docker.start(self.container_name)
-            self._wait_container_start()
+            self.start()
 
-    def restore(self, backup_path, filesystem_backup=True):
-        if filesystem_backup:
-            log.info('Restore filesystem backup %s on server %s', self.container_name, self.addr)
+    def restore(self, backup_path):
+        # Если это tar архив, то пробуем развернуть его как filesystem backup в остальных случаях пытаемся
+        # обработать его как стандартный архив постгреса
+        command = ['file', backup_path]
+        if subprocess.check_output(command, timeout=self.quick_operation_timeout).decode(). \
+                find('POSIX tar archive') != -1:
+            log.info('Restore filesystem backup for container %s on server %s', self.container_name, self.addr)
             # Сначала сделуюет почистить текущие файлы базы данных, для этого удаляем контейнер вместе с томом бд
             # Контейнер не остановлен, используем флаг force
             self.docker.remove_container(self.container_name, v=True, force=True)
             self._create_container()
-
-            # Копируем бд в новый контейнер
-            for fs_elem in os.listdir(backup_path):
-                command = ['docker', 'cp', os.path.join(backup_path, fs_elem),
-                           '{}:/var/lib/postgresql/data'.format(self.container_name)]
-                log.debug('Run command %s', ' '.join(command))
-                subprocess.check_call(command)
-
-            self.docker.start(self.container_name)
-            self._wait_container_start()
+            command = 'docker cp - {}:/var/lib/postgresql/data < {}'.format(self.container_name, backup_path)
+            subprocess.check_call(command, timeout=self.restore_timeout, shell=True)
+            self.start()
         else:
             super(StandDockerPostgres, self).restore(backup_path)

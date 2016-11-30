@@ -48,11 +48,14 @@ class DaemonTests(unittest.TestCase):
         self.EXISTED_STAND_DIR = '/home/okleptsova/PycharmProjects/stand-daemon/test_container'
         self.EXISTED_BUILD_DB_NAME = 'docker_old_build'
         self.EXISTED_STAND_DETAILS = {'image': config.image,
+                                      'catalina_opt': config.catalina_opt,
+
                                       'container_id': None,
                                       'name': self.NAME,
                                       'description': self.DESCRIPTION,
-                                      'ports': self.PORTS,
                                       'stand_dir': self.EXISTED_STAND_DIR,
+                                      'ports': self.PORTS,
+
 
                                       'db_type': 'postgres',
                                       'db_addr': self.DB_IP,
@@ -60,7 +63,11 @@ class DaemonTests(unittest.TestCase):
                                       'db_name': self.EXISTED_BUILD_DB_NAME,
                                       'db_user': config.postgres_user,
                                       'db_pass': config.postgres_pass,
+                                      'db_container': None,
+                                      'ssh_user': None,
+                                      'ssh_pass': None,
                                       'backup_dir': self.test_dir,
+
                                       'last_backup': None,
                                       'validate_entity_code': True,
                                       'uni_schema': None,
@@ -71,9 +78,10 @@ class DaemonTests(unittest.TestCase):
                                       'jenkins_user': config.jenkins_user,
                                       'jenkins_pass': config.jenkins_pass,
                                       'version': None,
-                                      'catalina_opt': config.catalina_opt,
+
 
                                       'active_task': None,
+                                      'web_interface_error': None,
                                       }
         self.SECOND_CONTAINER = 'unittest2'
         self.PGDOCKER_NAME = 'pg_unittest'
@@ -128,12 +136,10 @@ class DaemonTests(unittest.TestCase):
         container = stand.Stand(**self.EXISTED_STAND_DETAILS)
         container.create_container()
         container.start()
-        time.sleep(20)
-        container.check_http(180)
+        self.assertIsNone(container.web_interface_error)
         container.stop()
-        with self.assertRaises(Exception):
-            container.check_http(10)
         container.remove()
+        time.sleep(20)
 
     def test_4_free_resources(self):
         """
@@ -170,8 +176,7 @@ class DaemonTests(unittest.TestCase):
         t.run(no_exceptions=False)
 
         t.stand.start()
-        time.sleep(20)
-        t.stand.check_http()
+        self.assertIsNone(t.stand.web_interface_error)
         expected = {'status': 'running',
                     'url': 'http://{0}:{1}/'.format(self.config.uni_docker_url, self.PORTS[0])}
         actual = sm.get_stands(full_info=False, active_only=True)
@@ -310,21 +315,17 @@ class DaemonTests(unittest.TestCase):
         stand = t.stand
 
         sm.start(stand_name)
-        time.sleep(20)
-        stand.check_http()
+        self.assertIsNone(stand.web_interface_error)
         stand.stop(wait=True)
         stand.db.reduce()
 
         sm.backup_db(stand_name).run(no_exceptions=False)
         sm.start(stand_name)
-        time.sleep(20)
-        stand.check_http()
-
+        self.assertIsNone(stand.web_interface_error)
         sm.restore_db(stand_name).run(no_exceptions=False)
 
         sm.start(stand_name)
-        time.sleep(20)
-        t.stand.check_http()
+        self.assertIsNone(stand.web_interface_error)
 
     def test_12_stand_and_new_db_mssql(self):
         """

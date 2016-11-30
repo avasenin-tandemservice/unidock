@@ -173,8 +173,9 @@ class StandManager:
 
         return True
 
-    def get_stands(self, full_info=False, active_only=False, task_only=False) -> dict:
+    def get_stands(self, full_info=False, active_only=False, task_only=False, error_only=False) -> dict:
         """
+        :param error_only: показывать только стенды с ошибками
         :param full_info: показывать расширенную информацию
         :param active_only: показывать только активные стенды
         :param task_only: показывать только стенды имеющие активные задачи
@@ -188,6 +189,7 @@ class StandManager:
             info = {'url': self.get_url(name),
                     'version': stand.version,
                     'active_task': stand.active_task,
+                    'web_interface_error': stand.web_interface_error,
                     }
 
             if full_info:
@@ -203,7 +205,11 @@ class StandManager:
                 info['uni_schema'] = stand.uni_schema
                 info['catalina_opt'] = stand.catalina_opt
 
-            if task_only and not stand.active_task:
+            if task_only and (not stand.active_task or stand.active_task['status'] == task.ERROR):
+                continue
+
+            if error_only and not stand.web_interface_error and \
+                    (not stand.active_task or stand.active_task['status'] != task.ERROR):
                 continue
 
             if not stand.container_id:
@@ -255,7 +261,6 @@ class StandManager:
 
                 existed_db=False,
                 backup_file=None,
-                filesystem_backup=False,
                 reduce=False,
                 uni_schema=None,
                 ) -> task.Task:
@@ -298,8 +303,8 @@ class StandManager:
         if db_type == 'pgdocker' and existed_db and not db_port:
             raise DaemonException('You must specify db_port fom pgdocker existed db')
 
-        if (filesystem_backup or db_container) and db_type != 'pgdocker':
-            raise DaemonException('You can use filesystem backup or db_container only for pgdocker db_type')
+        if db_container and db_type != 'pgdocker':
+            raise DaemonException('You can use db_container only for pgdocker db_type')
 
         ports = self._get_ports()
 
@@ -321,6 +326,7 @@ class StandManager:
             ssh_user = None
             ssh_pass = None
             pattern = self.postgres_hibernate_conf
+            backup_dir = self.postgres_backup_dir
 
         elif db_type == 'mssql':
             if not db_addr:
@@ -335,6 +341,7 @@ class StandManager:
             ssh_user = None
             ssh_pass = None
             pattern = self.mssql_hibernate_conf
+            backup_dir = self.mssql_backup_dir
 
         elif db_type == 'pgdocker':
             if not db_addr:
@@ -349,21 +356,14 @@ class StandManager:
             ssh_user = self.pgdocker_ssh_user
             ssh_pass = self.pgdocker_ssh_pass
             pattern = self.postgres_hibernate_conf
+            backup_dir = self.pgdocker_backup_dir
 
         else:
             raise DaemonException('Unsupported database type')
 
         # Контейнеры по умолчанию не умеют резолвить имена, поэтому подключаемся по ip
         db_addr = socket.gethostbyname(db_addr)
-
-        if backup_file:
-            # Если это не бэкап файловой системы, значит он должен лежать в стандартной папке бэкапов постгреса
-            if db_type == 'pgdocker' and not filesystem_backup:
-                backup_path = self._backup_path(db_type='postgres', file=backup_file)
-            else:
-                backup_path = self._backup_path(db_type=db_type, file=backup_file)
-        else:
-            backup_path = None
+        db_port = int(db_port)
 
         stand_details = {'image': self.image,
                          'catalina_opt': self.catalina_opt,
@@ -383,6 +383,7 @@ class StandManager:
                          'db_container': db_container,
                          'ssh_user': ssh_user,
                          'ssh_pass': ssh_pass,
+                         'backup_dir': backup_dir,
 
                          'last_backup': None,
                          'validate_entity_code': validate_entity_code,
@@ -396,10 +397,16 @@ class StandManager:
                          'version': None,
 
                          'active_task': None,
+                         'web_interface_error': None,
                          }
 
         stand = Stand(**stand_details)
         self.stands[name] = stand
+
+        if backup_file:
+            backup_path = self._backup_path(stand, file_name=backup_file)
+        else:
+            backup_path = None
 
         return task.Task(do=task.DO_ADD_NEW,
                          stand=stand,
@@ -407,11 +414,11 @@ class StandManager:
                          pattern=pattern,
                          existed_db=existed_db,
                          backup_path=backup_path,
-                         filesystem_backup=filesystem_backup,
                          reduce=reduce,
-                         do_build=do_build)
+                         do_build=do_build,
+                         )
 
-    def _stand_with_validate(self, name):
+    def _stand_with_validate(self, name, for_task=True):
         try:
             stand = self.stands[name]
         except KeyError:
@@ -421,7 +428,10 @@ class StandManager:
         if not stand.container_id:
             raise DaemonException('Stand is not created')
 
-        if stand.active_task and stand.active_task['status'] != task.ERROR:
+        if for_task and stand.active_task and stand.active_task['status'] != task.ERROR:
+            raise DaemonException('Stand has task already. Wait for task complete')
+
+        if not for_task and stand.active_task and stand.active_task['status'] not in (task.ERROR, task.WAIT):
             raise DaemonException('Stand has active task. Wait for task complete')
 
         return stand
@@ -458,50 +468,59 @@ class StandManager:
         else:
             return task.Task(do=task.DO_UPDATE, stand=s, do_build=True)
 
-    def _backup_path(self, db_type, stand_name=None, file=None):
-        if not stand_name and not file:
-            raise RuntimeError('Needs stand name or filename')
+    @staticmethod
+    def _backup_path(stand, file_name=None, prefix=None, no_join_path=False):
+        """
+        Возвращает название файла или абсолютный путь к файлу резервной копии c учетом настроек стенда
+        :param stand: название стенда
+        :param file_name: ипользовать свое имя файла
+        :param prefix: ипользовать свой префикс в названии бэкапа
+        :param no_join_path: вернуть только название файла, не добавлять путь
+        :return:
+        """
+        db_type = stand.db_type
+        backup_dir = stand.backup_dir
 
-        if db_type == 'postgres':
-            if not file:
-                file = '{}_default.backup'.format(stand_name)
-            return os.path.join(self.postgres_backup_dir, file)
+        if file_name and prefix:
+            raise ValueError('You cannot use filename and prefix together')
 
-        if db_type == 'mssql':
-            if not file:
-                file = '{}_default.bak'.format(stand_name)
-            return '{}\\{}'.format(self.mssql_backup_dir, file)
+        if not prefix:
+            prefix = 'default'
 
-        if db_type == 'pgdocker':
-            if not file:
-                file = '{}_default.backup'.format(stand_name)
-            return os.path.join(self.pgdocker_backup_dir, file)
+        if not file_name:
+            if db_type == 'postgres':
+                file_name = '{}_{}.backup'.format(stand.name, prefix)
+            elif db_type == 'mssql':
+                file_name = '{}_{}.bak'.format(stand.name, prefix)
+            elif db_type == 'pgdocker':
+                file_name = '{}_{}.tar'.format(stand.name, prefix)
+            else:
+                raise RuntimeError('Unsupported database type')
 
-        raise RuntimeError('Unsupported database type')
+        if not no_join_path:
+            if db_type in ('postgres', 'pgdocker'):
+                return os.path.join(backup_dir, file_name)
+            elif db_type == 'mssql':
+                return '{}\\{}'.format(backup_dir, file_name)
+            else:
+                raise RuntimeError('Unsupported database type')
+        else:
+            return file_name
 
-    def backup_db(self, name, file=None) -> task.Task:
+    def backup_db(self, name, file=None, prefix=None) -> task.Task:
         """
         Задача на создание резервной копии базы данных с названием по умолчанию
+        :param prefix: создать бэкап с использованием префикса
         :param file: файл бэкапа в директории бэкапов стенда
         :param name: название стенда
         :return: Задача
         """
         log.debug('Add new task BACKUP for stand %s', name)
 
-        try:
-            s = self.stands[name]
-        except KeyError:
-            raise DaemonException('Stand is not exists')
+        s = self._stand_with_validate(name)
 
-        # Если на стенде есть проблемы, то не позволяем забэкапить базу в бэкап по умолчанию
-        if s.active_task:
-            if s.active_task['status'] == task.ERROR and file:
-                pass
-            elif s.active_task['status'] == task.ERROR and not file:
-                raise DaemonException(
-                        'Сan not to do backup with default name for stand with errors. Use specific filename')
-            else:
-                raise DaemonException('Stand has active task. Wait for task complete')
+        if s.web_interface_error:
+            raise DaemonException('Stand has web interface error. Use specific filename for backup')
 
         if not s.container_id:
             raise DaemonException('Сan not to do backup for uncreated stand')
@@ -514,7 +533,7 @@ class StandManager:
             raise DaemonException('Exit code of container is incorrect. Maybe stand is down now? Use specific filename')
 
         return task.Task(do=task.DO_BACKUP, stand=s,
-                         backup_path=self._backup_path(stand_name=name, db_type=s.db_type, file=file))
+                         backup_path=self._backup_path(stand=s, file_name=file, prefix=prefix))
 
     def restore_db(self, name, file=None) -> task.Task:
         """
@@ -526,28 +545,30 @@ class StandManager:
         log.debug('Add new task RESTORE for stand %s', name)
         s = self._stand_with_validate(name)
         return task.Task(do=task.DO_RESTORE, stand=s,
-                         backup_path=self._backup_path(stand_name=name, db_type=s.db_type, file=file))
+                         backup_path=self._backup_path(stand=s, file_name=file))
 
     def reduce(self, name) -> task.Task:
         log.debug('Add new task REDUCE for stand %s', name)
         s = self._stand_with_validate(name)
         return task.Task(do=task.DO_REDUCE, stand=s)
 
-    def start(self, name):
+    def start(self, name, wait=True):
         """
         Запустить стенд
+        :param wait: подождать запуска стенда
         :param name: название стенда
         """
         if not self.free_resources():
             raise DaemonException('Мax number of stands are running')
-        self._stand_with_validate(name).start()
+        self._stand_with_validate(name, for_task=False).start(wait=wait)
 
-    def stop(self, name):
+    def stop(self, name, wait=True):
         """
 ё       Остановить стенд
+        :param wait: подождать остановки стенда
         :param name: название стенда
         """
-        self._stand_with_validate(name).stop(wait=False)
+        self._stand_with_validate(name, for_task=False).stop(wait=wait)
 
     def catalina_out(self, name, tail=150):
         """
@@ -638,20 +659,10 @@ class StandManager:
         elif new_jenkins_version == 'last':
             new_jenkins_version = None
 
-        if stand.db_type == 'postgres':
-            backup_file = '{}_default.backup'.format(name)
-            pgdocker_backup = False
-            db_port = stand.db_port
-        elif stand.db_type == 'mssql':
-            backup_file = '{}_default.bak'.format(name)
-            pgdocker_backup = False
-            db_port = stand.db_port
-        elif stand.db_type == 'pgdocker':
-            backup_file = '{}_default.backup'.format(name)
-            pgdocker_backup = True
+        if stand.db_type == 'pgdocker':
             db_port = None
         else:
-            raise RuntimeError('Unsupported database type')
+            db_port = stand.db_port
 
         task_add = self.add_new(name=new_name,
                                 db_type=stand.db_type,
@@ -668,8 +679,8 @@ class StandManager:
                                 reduce=False,
                                 validate_entity_code=stand.validate_entity_code,
                                 uni_schema=stand.uni_schema,
-                                backup_file=backup_file,
-                                filesystem_backup=pgdocker_backup)
+                                backup_file=self._backup_path(stand=stand, no_join_path=True),
+                                )
 
         if do_backup:
             try:

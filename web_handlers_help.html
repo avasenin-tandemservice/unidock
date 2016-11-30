@@ -22,8 +22,11 @@ http://{addr}:{port}/list?full=1<br>
 Показать только запущеные стенды<br>
 http://{addr}:{port}/list?active=1<br>
 <br>
-Показать только стенды с задачами (обновление, восстановление и т. д.) и ошибками<br>
+Показать только стенды с задачами (обновление, восстановление и т. д.)<br>
 http://{addr}:{port}/list?task=1<br>
+<br>
+Показать только стенды с ошибками<br>
+http://{addr}:{port}/list?error=1<br>
 <br>
 2. Запуск стенда<br>
 <br>
@@ -60,7 +63,7 @@ http://{addr}:{port}/stand/name/log<br>
 Произвольное число строк с конца<br>
 http://{addr}:{port}/stand/name/log?tail=500<br>
 <br>
-Посмотреть за все время (на большихъ логах может зависнуть)<br>
+Посмотреть за все время (на больших логах может зависнуть)<br>
 http://{addr}:{port}/stand/name/log?tail=all<br>
 <br>
 <br>
@@ -110,7 +113,7 @@ http://{addr}:{port}/stand/name/clone?new_name=ok_tmp&do_backup=1<br>
 http://{addr}:{port}/stand/new_stand_name/add<br>
 <br>
 В BODY:<br>
-db_type — postgres или mssql, обязательный<br>
+db_type — postgres, pgdocker или mssql, обязательный<br>
 jenkins_project — название job в jenkins, обязательный<br>
 <br>
 db_addr — адрес сервера базы данных стенда, по умолчанию берет из конфига<br>

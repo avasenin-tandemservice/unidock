@@ -1,7 +1,6 @@
 import datetime
 import logging
 import os
-import time
 
 from daemon.jenkins import Jenkins
 from daemon.stand import Stand
@@ -73,7 +72,6 @@ class Task:
             backup_path = self.task_params['backup_path']
             do_build = self.task_params['do_build']
             reduce = self.task_params['reduce']
-            filesystem_backup = self.task_params['filesystem_backup']
         except KeyError:
             raise RuntimeError('Missing parameter of task')
 
@@ -83,7 +81,7 @@ class Task:
 
         if backup_path:
             self.set_status(RESTORE_DB)
-            self.stand.db.restore(backup_path=backup_path, filesystem_backup=filesystem_backup)
+            self.stand.db.restore(backup_path=backup_path)
 
             if self.stand.db_type == 'mssql' and self.stand.uni_schema:
                 self.stand.db.map_user_schema(self.stand.uni_schema['user'], 'uni')
@@ -124,10 +122,6 @@ class Task:
     def _test_run(self):
         self.set_status(TEST_RUN)
         self.stand.start()
-        time.sleep(20)
-        self.stand.check_http()
-        if 'dont_stop' not in self.task_params:
-            self.stand.stop(wait=True)
         self.set_status(None)
 
     def _reduce(self):
@@ -185,6 +179,8 @@ class Task:
 
     def run(self, no_exceptions=True):
         try:
+            available = self.stand.is_running()
+
             if self.do == DO_ADD_NEW:
                 self._add_new()
                 return
@@ -204,6 +200,9 @@ class Task:
             if self.do == DO_REDUCE:
                 self._reduce()
                 return
+
+            if available:
+                self.stand.start(wait=False)
 
         except Exception as e:
             if not no_exceptions:

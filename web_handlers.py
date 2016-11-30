@@ -47,7 +47,7 @@ class StandHandler(CommonHandler):
                 sm = self._get_stand_manager()
 
                 yield self._get_fast_task_tpe().submit(
-                        sm.start, name)
+                        sm.start, name, wait=False)
 
                 # Выключение стенда по таймауту
 
@@ -71,7 +71,7 @@ class StandHandler(CommonHandler):
 
             if action == 'stop':
                 yield self._get_fast_task_tpe().submit(
-                        self._get_stand_manager().stop, name)
+                        self._get_stand_manager().stop, name, wait=False)
                 self.finish('Done')
                 return
 
@@ -136,12 +136,19 @@ class StandHandler(CommonHandler):
                 else:
                     validate_entity_code = True
 
+                db_port = self.get_body_argument('db_port', None)
+                if db_port:
+                    try:
+                        db_port = int(db_port)
+                    except ValueError:
+                        raise DaemonException('Db port should be a number')
+
                 task = self._get_stand_manager().add_new(
                         name=name.lower(),
                         db_type=self.get_body_argument('db_type'),
                         jenkins_project=self.get_body_argument('jenkins_project'),
                         db_addr=self.get_body_argument('db_addr', None),
-                        db_port=self.get_body_argument('db_port', None),
+                        db_port=db_port,
                         db_name=self.get_body_argument('db_name', None),
                         db_user=self.get_body_argument('db_user', None),
                         db_pass=self.get_body_argument('db_pass', None),
@@ -152,7 +159,7 @@ class StandHandler(CommonHandler):
                         existed_db=self.get_body_argument('existed_db', False),
                         backup_file=self.get_body_argument('backup_file', None),
                         reduce=self.get_body_argument('reduce', False),
-                        uni_schema=self.get_body_argument('uni_schema', None)
+                        uni_schema=self.get_body_argument('uni_schema', None),
                 )
                 self._get_long_task_tpe().submit(task.run)
                 self.finish('Task added')
@@ -179,10 +186,12 @@ class ListHandler(CommonHandler):
             full_info = self.get_argument('full', False)
             active_only = self.get_argument('active', False)
             task_only = self.get_argument('task', False)
+            error_only = self.get_argument('error', False)
             info = yield self._get_fast_task_tpe().submit(self._get_stand_manager().get_stands,
                                                           full_info=full_info,
                                                           active_only=active_only,
-                                                          task_only=task_only)
+                                                          task_only=task_only,
+                                                          error_only=error_only)
             self.finish(info)
         except DaemonException as e:
             log.info(e)
