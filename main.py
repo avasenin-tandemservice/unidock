@@ -18,6 +18,7 @@ def main():
 
     application = Application([
         (r'/stand/([a-z,0-9,\-,_]+)/*([a-z]*)', web_handlers.StandHandler),
+        (r'/s/([a-z,0-9,\-,_]+)/*([a-z]*)', web_handlers.StandHandler),
         (r'/list/*', web_handlers.ListHandler),
         (r'/.*', web_handlers.HelpHandler),
     ])

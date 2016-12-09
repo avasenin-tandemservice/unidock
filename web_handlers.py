@@ -62,9 +62,10 @@ class StandHandler(CommonHandler):
                     else:
                         log.debug('Stand %s stop event was cancelled earlier', name)
 
-                future = gen.sleep(duration * 60)
-                future.add_done_callback(stop_callback)
-                sm.stands_futures[name] = future
+                if self._get_stand_manager().stop_by_timeout:
+                    future = gen.sleep(duration * 60)
+                    future.add_done_callback(stop_callback)
+                    sm.stands_futures[name] = future
 
                 self.finish('Done')
                 return

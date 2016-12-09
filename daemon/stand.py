@@ -162,38 +162,35 @@ class Stand:
     @gen.coroutine
     def _check_uni_iface(self, blocking=True, timeout=900):
         log.debug('Check connect to %s container', self.name)
-        # В течение первых 50 секунд, либо пока контейнер запущен пытаемся установить tcp-соединение.
-        # Томкат начинает слушать порт не сразу
-        # После установки соединения ждем ответа по протоколу http до истечения таймаута
 
-        try_count = 0
+        # Томкат начинает слушать порт не сразу. Игнорируем ошибки пока не истек таймаут
+        # Если контейнер не запущен, то веб-интерфейс не будет доступен
+        deadline = time.time() + timeout
         while 1:
-            if self.is_running():
-                try:
-                    if blocking:
-                        cl = HTTPClient()
-                        cl.fetch('http://localhost:{0}/'.format(self.ports[0]), request_timeout=timeout)
-                    else:
-                        cl = AsyncHTTPClient()
-                        yield cl.fetch('http://localhost:{0}/'.format(self.ports[0]), request_timeout=timeout)
-
-                    self.web_interface_error = None
-                    break
-                except (ConnectionError, HTTPError) as e:
-                    if try_count < 10:
-                        if blocking:
-                            time.sleep(5)
-                        else:
-                            yield gen.sleep(5)
-                        try_count += 1
-                    else:
-                        self.web_interface_error = str(e)
-                        break
-                finally:
-                    cl.close()
-            else:
+            if not self.is_running():
                 self.web_interface_error = 'Container has unexpectedly stopped'
                 break
+            try:
+                if blocking:
+                    cl = HTTPClient()
+                    cl.fetch('http://localhost:{0}/'.format(self.ports[0]), request_timeout=timeout)
+                else:
+                    cl = AsyncHTTPClient()
+                    yield cl.fetch('http://localhost:{0}/'.format(self.ports[0]), request_timeout=timeout)
+
+                self.web_interface_error = None
+                break
+            except (ConnectionError, HTTPError) as e:
+                if time.time() < deadline:
+                    if blocking:
+                        time.sleep(5)
+                    else:
+                        yield gen.sleep(5)
+                else:
+                    self.web_interface_error = str(e)
+                    break
+            finally:
+                cl.close()
 
         if self.web_interface_error:
             log.info('Container %s is not available. Web interface error: %s', self.name, self.web_interface_error)

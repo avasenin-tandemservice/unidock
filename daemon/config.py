@@ -18,6 +18,7 @@ class DaemonConfig(object):
         self.max_active_stands = -1
         self.start_port = -1
         self.ports = -1
+        self.stop_by_timeout = True
 
         # Базы данных, таймауты в секундах
         self.backup_timeout = -1
@@ -35,11 +36,11 @@ class DaemonConfig(object):
         self.postgres_user = 'undefined'
         self.postgres_pass = 'undefined'
         self.postgres_backup_dir = 'undefined'
-        self.postgres_ignore_restore_errors = 'undefined'
+        self.postgres_ignore_restore_errors = True
 
         self.pgdocker_start_port = -1
         self.pgdocker_ports = -1
-        self.pgdocker_use_ssh = 'undefined'
+        self.pgdocker_use_ssh = False
         self.pgdocker_addr = 'undefined'
         self.pgdocker_ssh_user = 'undefined'
         self.pgdocker_ssh_pass = 'undefined'
@@ -98,14 +99,14 @@ class DaemonConfig(object):
             if obj_name == 'defined':
                 continue
             try:
-                if obj_name in ('postgres_ignore_restore_errors', 'pgdocker_use_ssh'):
+                if type(obj_val) is bool:
                     val = config.getboolean(section='all', option=obj_name)
+                elif type(obj_val) is int:
+                    val = config.getint(section='all', option=obj_name)
                 else:
                     val = config.get(section='all', option=obj_name)
             except NoOptionError:
                 raise RuntimeError('Config param %s is missed' % obj_name)
-            if type(obj_val) is int:
-                val = int(val)
 
             self.__dict__[obj_name] = val
 

@@ -25,6 +25,7 @@ class StandManager:
         self.uni_docker_port = config.uni_docker_port
         self.start_port = config.start_port
         self.ports = config.ports
+        self.stop_by_timeout = config.stop_by_timeout
 
         self.image = config.image
         self.catalina_opt = config.catalina_opt
@@ -222,8 +223,10 @@ class StandManager:
 
             inspect_info = self.cli.inspect_container(stand.container_id)
 
-            if inspect_info['State']['Running']:
+            if stand.is_running():
                 info['status'] = inspect_info['State']['Status']
+                if full_info:
+                    info['pid'] = inspect_info['State']['Pid']
             else:
                 if active_only:
                     continue
@@ -463,10 +466,7 @@ class StandManager:
             s.write_json()
 
         log.debug('Add new task UPDATE for stand %s', name)
-        if s.name in self.get_stands(active_only=True):
-            return task.Task(do=task.DO_UPDATE, stand=s, do_build=True, dont_stop=True)
-        else:
-            return task.Task(do=task.DO_UPDATE, stand=s, do_build=True)
+        return task.Task(do=task.DO_UPDATE, stand=s, do_build=True)
 
     @staticmethod
     def _backup_path(stand, file_name=None, prefix=None, no_join_path=False):
@@ -681,8 +681,12 @@ class StandManager:
                                 uni_schema=stand.uni_schema,
                                 backup_file=self._backup_path(stand=stand, no_join_path=True),
                                 )
+        # Заменяем дефолтные конфиги на конфиги стенда
+        task_add.task_params['config_dir'] = os.path.join(stand.stand_dir, 'config')
 
-        if do_backup:
+        # Делаем резервную копию если явно сказано сделать ее, либо если нет ни одного бэкапа
+        # TODO если существует только бэкап в недефолтным именем, то сломается если do_backup=false
+        if do_backup or not stand.last_backup:
             try:
                 task_list = [self.backup_db(name), task_add]
             except DaemonException as e:

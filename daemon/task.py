@@ -59,9 +59,10 @@ class Task:
     def write_version_file(self):
         log.debug('Write version file')
         with open(os.path.join(self.stand.stand_dir, 'config', 'version.txt'), 'wt') as f:
-            f.writelines(['{0} {1} {2}'.format(self.stand.jenkins_project,
-                                               self.stand.jenkins_version or 'no ver.',
-                                               self.stand.version),
+            f.writelines(['Unidock name: {}, Jenkins job: {} {} at {}'.format(self.stand.name,
+                                                                              self.stand.jenkins_project,
+                                                                              self.stand.jenkins_version or '',
+                                                                              self.stand.version),
                           ])
 
     def _add_new(self):
@@ -139,8 +140,6 @@ class Task:
         self.stand.stop(wait=True)
         self.set_status(BUILD_AND_UPLOAD)
         webapp_dir = os.path.join(self.stand.stand_dir, 'webapp')
-        os.rename(webapp_dir, '{0}_backup_{1}'.format(webapp_dir, datetime.datetime.now().strftime('%d.%m.%Y %H:%M')))
-        os.mkdir(webapp_dir)
         if do_build:
             build = self.jenkins.build_project(self.stand.jenkins_project, self.stand.jenkins_version)
         else:
@@ -183,23 +182,23 @@ class Task:
 
             if self.do == DO_ADD_NEW:
                 self._add_new()
-                return
 
-            if self.do == DO_UPDATE:
+            elif self.do == DO_UPDATE:
                 self._update()
-                return
 
-            if self.do == DO_BACKUP:
+            elif self.do == DO_BACKUP:
                 self._backup_db()
-                return
 
-            if self.do == DO_RESTORE:
+            elif self.do == DO_RESTORE:
                 self._restore_db()
-                return
 
-            if self.do == DO_REDUCE:
+            elif self.do == DO_REDUCE:
                 self._reduce()
-                return
+
+            else:
+                log.error('Unsupported task "do"')
+                if not no_exceptions:
+                    raise RuntimeError('Unsupported task "do"')
 
             if available:
                 self.stand.start(wait=False)
@@ -212,7 +211,3 @@ class Task:
             self.set_status(ERROR)
             log.exception(e)
             return
-
-        log.error('Unsupported task "do"')
-        if not no_exceptions:
-            raise RuntimeError('Unsupported task "do"')

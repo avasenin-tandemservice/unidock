@@ -56,7 +56,6 @@ class DaemonTests(unittest.TestCase):
                                       'stand_dir': self.EXISTED_STAND_DIR,
                                       'ports': self.PORTS,
 
-
                                       'db_type': 'postgres',
                                       'db_addr': self.DB_IP,
                                       'db_port': 5432,
@@ -78,7 +77,6 @@ class DaemonTests(unittest.TestCase):
                                       'jenkins_user': config.jenkins_user,
                                       'jenkins_pass': config.jenkins_pass,
                                       'version': None,
-
 
                                       'active_task': None,
                                       'web_interface_error': None,
@@ -139,7 +137,6 @@ class DaemonTests(unittest.TestCase):
         self.assertIsNone(container.web_interface_error)
         container.stop()
         container.remove()
-        time.sleep(20)
 
     def test_4_free_resources(self):
         """
@@ -222,7 +219,7 @@ class DaemonTests(unittest.TestCase):
         expected = {'jenkins_project': self.PROJECT,
                     'url': 'http://{0}:{1}/'.format(self.config.uni_docker_url, self.PORTS[0]),
                     'db_type': 'postgres',
-                    'status': 'stopped',
+                    'status': 'running',
                     'db_port': 5432,
                     'db_name': self.LAST_BUILD_DB_NAME,
                     'jenkins_version': None,

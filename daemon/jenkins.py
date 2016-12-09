@@ -1,9 +1,11 @@
 import logging
 import os
+import shutil
 import time
 import zipfile
 
 import jenkinsapi
+import pytz
 
 from daemon.exceptions import DaemonException
 
@@ -93,6 +95,13 @@ class Jenkins:
         log.debug('start loading build artifact for project %s and build number %s', project, build_number)
         for war in build.get_artifacts():
             assert isinstance(war, jenkinsapi.artifact.Artifact)
+
+            if os.path.isdir(dir_for_files):
+                log.info('Remove directory %s', dir_for_files)
+                shutil.rmtree(dir_for_files)
+
+            os.mkdir(dir_for_files)
+
             log.debug('download %s to %s', war.filename, war_file)
 
             try:
@@ -109,6 +118,8 @@ class Jenkins:
             f.extractall(path=dir_for_files)
             f.close()
 
-            build_date = build.get_timestamp().strftime('%d.%m.%Y %H:%M')
-            version = '{0} jenkins build: {1}'.format(build_date, build_number)
-            return version
+            build_ts = build.get_timestamp()
+            local_datetime_string = build_ts.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('Asia/Yekaterinburg')) \
+                .strftime('%d.%m.%Y %H:%M')
+
+            return '{0} build {1}'.format(local_datetime_string, build_number)

@@ -2,7 +2,7 @@
 2. Сбилдить image
 docker build -t uni-tomcat config_files/uni-tomcat
 3. Установить библиотеки, необходимые для сборки питонных библиотек (+ gcc?)
-apt-get install postgresql-client python3-pip python3-dev freetds-dev
+apt-get install postgresql-client-9.4 python3-pip python3-dev freetds-dev
 4. Установить зависимости
 pip3 install docker-py tornado jenkinsapi pymssql python-magic
 5. Добавить своего пользователя в группу docker
@@ -17,5 +17,5 @@ pip3 install docker-py tornado jenkinsapi pymssql python-magic
 sudo adduser pgdocker
 4. Установить ssh сервер для подключений с целью управления томами
 sudo apt-get install ssh-server
-5. Закачать образ postgres
+5. Закачать образ postgres. Необходимо чтобы версия postgresql-client была не ниже версии докер-образа постгрес
 docker pull postgres:9.4

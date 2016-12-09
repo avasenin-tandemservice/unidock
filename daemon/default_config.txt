@@ -12,6 +12,7 @@ work_dir = /opt/uni-docker
 max_active_stands = 3
 start_port = 8400
 ports = 100
+stop_by_timeout = true
 
 # Базы данных, таймауты в секундах
 backup_timeout = 3600
@@ -51,6 +52,6 @@ mssql_backup_dir = D:\uni-docker\backups
 mssql_db_dir = D:\uni-docker\db
 
 # Параметры подключения к сборщику используемые по умолчанию. Изменение не приведет к изменению работы уже созданных стендов
-jenkins_url = http://jenkins/jenkins/
+jenkins_url = http://jenkins.mydomain.ru/jenkins/
 jenkins_user = uni-docker
 jenkins_pass = uni-docker

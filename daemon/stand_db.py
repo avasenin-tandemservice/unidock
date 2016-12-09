@@ -337,9 +337,9 @@ class StandPostgresDb(StandDb):
         elif os.path.isdir(backup_path) \
                 or magic.from_file(backup_path, mime=False).find('PostgreSQL') != -1 \
                 or magic.from_file(backup_path, mime=False).find('POSIX tar archive') != -1:
-            log.info('Restore pg_dump backup to database %s on server %s', self.name, self.addr)
             StandPostgresDb.drop(self)
             StandPostgresDb.create(self)
+            log.info('Restore pg_dump backup to database %s on server %s', self.name, self.addr)
             args = ['pg_restore',
                     '--no-owner', '--no-privileges',
                     '--dbname', self.name,
