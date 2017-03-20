@@ -209,6 +209,12 @@ class Stand:
             raise DaemonException(str(e))
         if wait:
             self.cli.wait(self.container_id)
+        if self.db_container:
+            log.info('Stop database container %s', self.db_container)
+            try:
+                self.cli.stop(self.db_container, timeout=60)
+            except (errors.DockerException, errors.APIError) as e:
+                raise DaemonException(str(e))
 
     def remove(self):
         self.stop()
