@@ -24,11 +24,8 @@ image = uni-tomcat
 catalina_opt = -Dapp.install.path=/usr/local/uni -Xmx1024m -Djava.awt.headless=true -Dfile.encoding=UTF-8 -Xdebug -Xnoagent -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8180
 #Создание новых баз данных с этим префиксом
 db_prefix = dock_
-# отсюда копируется app.config, можно добавить другие uni конфиги
-config_dir = /opt/uni-docker/config
-# шаблоны конфигов баз данных
-postgres_hibernate_config = /opt/uni-docker/config_files/postgres_hibernate.properties
-mssql_hibernate_config = /opt/uni-docker/config_files/mssql_hibernate.properties
+# Директория с шаблонами конфигов баз, и другими конфигами
+config_dir = /opt/unidock/config_files
 
 # Параметры подключения к базам данных используемые по умолчанию. Изменение не приведет к изменению работы уже созданных стендов
 postgres_addr = 127.0.0.1

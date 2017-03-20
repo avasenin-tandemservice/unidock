@@ -20,7 +20,7 @@ class StandManager:
 
         self.max_active_stands = config.max_active_stands
         self.work_dir = config.work_dir
-        self.config_dir = config.config_dir
+        self.config_dir = os.path.join(config.config_dir, 'config')
         self.uni_docker_url = config.uni_docker_url
         self.uni_docker_port = config.uni_docker_port
         self.start_port = config.start_port
@@ -31,7 +31,7 @@ class StandManager:
         self.catalina_opt = config.catalina_opt
         self.db_prefix = config.db_prefix
 
-        self.postgres_hibernate_conf = config.postgres_hibernate_config
+        self.postgres_hibernate_conf = os.path.join(config.config_dir, 'postgres_hibernate.properties')
         self.postgres_addr = config.postgres_addr
         self.postgres_user = config.postgres_user
         self.postgres_pass = config.postgres_pass
@@ -45,7 +45,7 @@ class StandManager:
         self.pgdocker_backup_dir = config.pgdocker_backup_dir
 
         self.mssql_addr = config.mssql_addr
-        self.mssql_hibernate_conf = config.mssql_hibernate_config
+        self.mssql_hibernate_conf = os.path.join(config.config_dir, 'mssql_hibernate.properties')
         self.mssql_user = config.mssql_user
         self.mssql_pass = config.mssql_pass
         self.mssql_backup_dir = config.mssql_backup_dir

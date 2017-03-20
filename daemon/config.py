@@ -32,7 +32,6 @@ class DaemonConfig(object):
 
         # шаблон конфига
         self.postgres_addr = 'undefined'
-        self.postgres_hibernate_config = 'undefined'
         self.postgres_user = 'undefined'
         self.postgres_pass = 'undefined'
         self.postgres_backup_dir = 'undefined'
@@ -47,7 +46,6 @@ class DaemonConfig(object):
         self.pgdocker_backup_dir = 'undefined'
 
         self.mssql_addr = 'undefined'
-        self.mssql_hibernate_config = 'undefined'
         self.mssql_user = 'undefined'
         self.mssql_pass = 'undefined'
         self.mssql_backup_dir = 'undefined'

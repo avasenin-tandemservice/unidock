@@ -122,7 +122,7 @@ def main():
         log.info('Update config files of stands')
         for stand in sm.stands.values():
             stand_config_dir = os.path.join(stand.stand_dir, 'config')
-            default_config_dir = conf.config_dir
+            default_config_dir = os.path.join(conf.config_dir, 'config')
             src_files = os.listdir(default_config_dir)
             for file_name in src_files:
                 full_file_name = os.path.join(default_config_dir, file_name)
