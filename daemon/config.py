@@ -54,6 +54,7 @@ class DaemonConfig(object):
         self.jenkins_url = 'undefined'
         self.jenkins_user = 'undefined'
         self.jenkins_pass = 'undefined'
+        self.default_branch = 'undefined'
 
         self.defined = False
 

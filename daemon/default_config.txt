@@ -52,3 +52,4 @@ mssql_db_dir = D:\uni-docker\db
 jenkins_url = http://jenkins.mydomain.ru/jenkins/
 jenkins_user = uni-docker
 jenkins_pass = uni-docker
+default_branch = tandem_uni_v_2_11_0_2016_12_08

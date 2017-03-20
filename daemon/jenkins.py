@@ -8,6 +8,7 @@ import jenkinsapi
 import pytz
 
 from daemon.exceptions import DaemonException
+from daemon.config import DaemonConfig
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +36,23 @@ class Jenkins:
         log.debug('call build project %s and version %s', project, version)
         s = self.server
         job = s[project]
+        """
+        Мне показалось, что инициализировать конфиг здесь легче,
+        чем модифицировать stand_info.json при каждом новом выпуске бранча.
+        Хоть это, возможно, и немного "ломает" изначальную архитектуру.
+        """
+        branch = DaemonConfig().load_default().default_branch
 
+        """
+        если версия стенда указана руками, соберется джоб с такой версией;
+        если версия не указана - проверяем, поддерживает ли джоб указание версии:
+        если поддерживает - собираем с дефолтной;
+        если не поддерживает - собираем без версии.
+        """
         if version:
             params = {'Version': version}
+        elif 'Version' in s.get_job(project).get_params_list():
+            params = {'Version': branch}
         else:
             params = None
 
